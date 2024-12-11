@@ -265,7 +265,7 @@ public static class CatalogApi
         var pageSize = paginationRequest.PageSize;
         var pageIndex = paginationRequest.PageIndex;
         var getItemsQuery = CreateQueryForGetItemsByBrandAndTypeId(typeId, brandId, pageSize, pageIndex);
-        var countItemsQuery = CreateQueryForCountItemsByTypeId(typeId);
+        var countItemsQuery = CreateQueryForCountItemsByBrandAndTypeId(typeId, brandId);
 
         var totalItems = await services.Context.CatalogItems
             .FromSqlRaw(countItemsQuery)
@@ -278,13 +278,20 @@ public static class CatalogApi
         return TypedResults.Ok(new PaginatedItems<CatalogItem>(pageIndex, pageSize, totalItems, itemsOnPage));
     }
 
-    private static string CreateQueryForCountItemsByTypeId(int typeId)
+    private static string CreateQueryForCountItemsByBrandAndTypeId(int typeId, int? brandId)
     {
         string query = $"""
             SELECT *
             FROM public."Catalog"
-            WHERE "Catalog"."CatalogTypeId" = {typeId}
+            WHERE "Catalog"."CatalogTypeId" = {typeId} 
             """;
+        if (brandId is not null)
+        {
+            query += $"""
+            AND "Catalog"."CatalogBrandId" = {brandId} 
+            """;
+        }
+
         return query;
     }
 
