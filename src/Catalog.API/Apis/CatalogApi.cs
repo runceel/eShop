@@ -281,7 +281,7 @@ public static class CatalogApi
     private static string CreateQueryForCountItemsByTypeId(int typeId)
     {
         string query = $"""
-            SELECT COUNT(*)
+            SELECT *
             FROM public."Catalog"
             WHERE "Catalog"."CatalogTypeId" = {typeId}
             """;
@@ -331,22 +331,51 @@ public static class CatalogApi
         var pageSize = paginationRequest.PageSize;
         var pageIndex = paginationRequest.PageIndex;
 
-        var root = (IQueryable<CatalogItem>)services.Context.CatalogItems;
+        var query = CreateQueryForGetItemsByBrandId(brandId, pageSize, pageIndex);
+        var countQuery = CreateQueryForCountItemsByBrandId(brandId);
 
-        if (brandId is not null)
-        {
-            root = root.Where(ci => ci.CatalogBrandId == brandId);
-        }
-
-        var totalItems = await root
+        var totalItems = await services.Context.CatalogItems
+            .FromSqlRaw(countQuery)
             .LongCountAsync();
 
-        var itemsOnPage = await root
-            .Skip(pageSize * pageIndex)
-            .Take(pageSize)
+        var itemsOnPage = await services.Context.CatalogItems
+            .FromSqlRaw(query)
             .ToListAsync();
 
         return TypedResults.Ok(new PaginatedItems<CatalogItem>(pageIndex, pageSize, totalItems, itemsOnPage));
+    }
+
+    private static string CreateQueryForCountItemsByBrandId(int? brandId)
+    {
+        string query = $"""
+            SELECT *
+            FROM public."Catalog"
+            WHERE "Catalog"."CatalogBrandId" = {brandId}
+            """;
+        return query;
+    }
+
+    private static string CreateQueryForGetItemsByBrandId(int? brandId, int pageSize, int pageIndex)
+    {
+        string query = $"""
+            SELECT 
+                "Id", 
+                "Name", 
+                "Description", 
+                "Price", 
+                "PictureFileName", 
+                "CatalogTypeId", 
+                "CatalogBrandId", 
+                "AvailableStock", 
+                "RestockThreshold", 
+                "MaxStockThreshold", 
+                "Embedding", 
+                "OnReorder"
+            FROM public."Catalog"
+            WHERE "Catalog"."CatalogBrandId" = {brandId}
+            LIMIT {pageSize} OFFSET {pageIndex * pageSize}
+            """;
+        return query;
     }
 
     public static async Task<Results<Created, NotFound<ProblemDetails>>> UpdateItem(
