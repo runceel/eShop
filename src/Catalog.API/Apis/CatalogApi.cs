@@ -155,14 +155,33 @@ public static class CatalogApi
             .Where(c => c.Name.StartsWith(name))
             .LongCountAsync();
 
+        var query = CreateSqlQueryForCatalogItems(name, pageSize, pageIndex);
         var itemsOnPage = await services.Context.CatalogItems
-            .Where(c => c.Name.StartsWith(name))
-            .Skip(pageSize * pageIndex)
-            .Take(pageSize)
+            .FromSqlRaw(query)
             .ToListAsync();
 
         return TypedResults.Ok(new PaginatedItems<CatalogItem>(pageIndex, pageSize, totalItems, itemsOnPage));
     }
+
+    private static string CreateSqlQueryForCatalogItems(string name, int pageSize, int pageIndex) =>
+        $"""
+        SELECT 
+            "Id", 
+            "Name", 
+            "Description", 
+            "Price", 
+            "PictureFileName", 
+            "CatalogTypeId", 
+            "CatalogBrandId", 
+            "AvailableStock", 
+            "RestockThreshold", 
+            "MaxStockThreshold", 
+            "Embedding", 
+            "OnReorder"
+        FROM public."Catalog"
+        WHERE "Catalog"."Name" LIKE '{name}%'
+        LIMIT {pageSize} OFFSET {pageIndex * pageSize}
+        """;
 
     [ProducesResponseType<byte[]>(StatusCodes.Status200OK, "application/octet-stream",
         [ "image/png", "image/gif", "image/jpeg", "image/bmp", "image/tiff",
@@ -245,23 +264,69 @@ public static class CatalogApi
     {
         var pageSize = paginationRequest.PageSize;
         var pageIndex = paginationRequest.PageIndex;
+        var getItemsQuery = CreateQueryForGetItemsByBrandAndTypeId(typeId, brandId, pageSize, pageIndex);
+        var countItemsQuery = CreateQueryForCountItemsByBrandAndTypeId(typeId, brandId);
 
-        var root = (IQueryable<CatalogItem>)services.Context.CatalogItems;
-        root = root.Where(c => c.CatalogTypeId == typeId);
-        if (brandId is not null)
-        {
-            root = root.Where(c => c.CatalogBrandId == brandId);
-        }
-
-        var totalItems = await root
+        var totalItems = await services.Context.CatalogItems
+            .FromSqlRaw(countItemsQuery)
             .LongCountAsync();
 
-        var itemsOnPage = await root
-            .Skip(pageSize * pageIndex)
-            .Take(pageSize)
+        var itemsOnPage = await services.Context.CatalogItems
+            .FromSqlRaw(getItemsQuery)
             .ToListAsync();
 
         return TypedResults.Ok(new PaginatedItems<CatalogItem>(pageIndex, pageSize, totalItems, itemsOnPage));
+    }
+
+    private static string CreateQueryForCountItemsByBrandAndTypeId(int typeId, int? brandId)
+    {
+        string query = $"""
+            SELECT *
+            FROM public."Catalog"
+            WHERE "Catalog"."CatalogTypeId" = {typeId} 
+            """;
+        if (brandId is not null)
+        {
+            query += $"""
+            AND "Catalog"."CatalogBrandId" = {brandId} 
+            """;
+        }
+
+        return query;
+    }
+
+    private static string CreateQueryForGetItemsByBrandAndTypeId(int typeId, int? brandId, int pageSize, int pageIndex)
+    {
+        string query = $"""
+            SELECT 
+                "Id", 
+                "Name", 
+                "Description", 
+                "Price", 
+                "PictureFileName", 
+                "CatalogTypeId", 
+                "CatalogBrandId", 
+                "AvailableStock", 
+                "RestockThreshold", 
+                "MaxStockThreshold", 
+                "Embedding", 
+                "OnReorder"
+            FROM public."Catalog"
+            WHERE "Catalog"."CatalogTypeId" = {typeId} 
+            """;
+
+        if (brandId is not null)
+        {
+            query += $"""
+            AND "Catalog"."CatalogBrandId" = {brandId} 
+            """;
+        }
+
+        query += $"""
+            LIMIT {pageSize} OFFSET {pageIndex * pageSize} 
+            """;
+
+        return query;
     }
 
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
@@ -273,22 +338,51 @@ public static class CatalogApi
         var pageSize = paginationRequest.PageSize;
         var pageIndex = paginationRequest.PageIndex;
 
-        var root = (IQueryable<CatalogItem>)services.Context.CatalogItems;
+        var query = CreateQueryForGetItemsByBrandId(brandId, pageSize, pageIndex);
+        var countQuery = CreateQueryForCountItemsByBrandId(brandId);
 
-        if (brandId is not null)
-        {
-            root = root.Where(ci => ci.CatalogBrandId == brandId);
-        }
-
-        var totalItems = await root
+        var totalItems = await services.Context.CatalogItems
+            .FromSqlRaw(countQuery)
             .LongCountAsync();
 
-        var itemsOnPage = await root
-            .Skip(pageSize * pageIndex)
-            .Take(pageSize)
+        var itemsOnPage = await services.Context.CatalogItems
+            .FromSqlRaw(query)
             .ToListAsync();
 
         return TypedResults.Ok(new PaginatedItems<CatalogItem>(pageIndex, pageSize, totalItems, itemsOnPage));
+    }
+
+    private static string CreateQueryForCountItemsByBrandId(int? brandId)
+    {
+        string query = $"""
+            SELECT *
+            FROM public."Catalog"
+            WHERE "Catalog"."CatalogBrandId" = {brandId}
+            """;
+        return query;
+    }
+
+    private static string CreateQueryForGetItemsByBrandId(int? brandId, int pageSize, int pageIndex)
+    {
+        string query = $"""
+            SELECT 
+                "Id", 
+                "Name", 
+                "Description", 
+                "Price", 
+                "PictureFileName", 
+                "CatalogTypeId", 
+                "CatalogBrandId", 
+                "AvailableStock", 
+                "RestockThreshold", 
+                "MaxStockThreshold", 
+                "Embedding", 
+                "OnReorder"
+            FROM public."Catalog"
+            WHERE "Catalog"."CatalogBrandId" = {brandId}
+            LIMIT {pageSize} OFFSET {pageIndex * pageSize}
+            """;
+        return query;
     }
 
     public static async Task<Results<Created, NotFound<ProblemDetails>>> UpdateItem(
