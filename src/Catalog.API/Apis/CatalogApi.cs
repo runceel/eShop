@@ -180,7 +180,7 @@ public static class CatalogApi
             "OnReorder"
         FROM public."Catalog"
         WHERE "Catalog"."Name" LIKE '{name}%'
-        LIMIT {pageSize} OFFSET {pageIndex * pageSize};
+        LIMIT {pageSize} OFFSET {pageIndex * pageSize}
         """;
 
     [ProducesResponseType<byte[]>(StatusCodes.Status200OK, "application/octet-stream",
